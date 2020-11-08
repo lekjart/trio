@@ -4,11 +4,9 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 import tkinter as tk
 from tkinter import font
+from tkinter import filedialog
 import math
-
-root = tk.Tk()
-root.configure(bg='gray40')
-
+import json
 
 class Motif:
     def __init__(self):
@@ -23,6 +21,10 @@ class Motif:
         self.frame = None
         self.parent_frame = None
         self.scale_entry = None
+
+    def __del__(self):
+        #self.frame.destroy()
+        print('bkljsdfklsdjfklj')
 
     def set_color(self, new_color):
         self.color = new_color
@@ -67,13 +69,8 @@ class Motif:
         self.points.append((a + b + b*math.cos(A), b*math.sin(A)))
         self.points.append((a + b + c, 0.0))
 
-        print(self.points)
-
     def set_points(self, points):
         self.points = []
-        self.points.append((0.0,0.0))
-        self.points += points
-        self.points.append((1.0,0.0))
 
     def interpolate(self, p0 ,p1, x):
         return (p1[1]-p0[1])/(p1[0]-p0[0])/self.scale[0]*(x - p0[0]*self.scale[0]) + p0[1]
@@ -173,54 +170,100 @@ class Motif:
 
             self.canvas.create_line(fill=self.color, width=2, *s)
 
-motif_list = []
-m = Motif()
-motif_list.append(m)
+class Trio:
+    def __init__(self):
+        self.motif_list = []
 
-m.set_points_from_triangle(8.0, 5.5, 7.9)
-#m.set_points([(1.0/6.0, 0.3),(2.0/6.0, 0.0),(3.0/6.0, 0.1),(4.0/6.0, 0.0),(5.0/6.0, 1.0)])
-m.set_scale(200)
-m.set_translation(0)
-m.set_color('sienna2')
+        self.root = tk.Tk()
+        self.root.configure(bg='gray40')
 
-m = Motif()
-#motif_list.append(m)
+        # Create menubar
+        self.menubar = tk.Menu(self.root)
+        filemenu = tk.Menu(self.menubar, tearoff=0)
+        filemenu.add_command(label='Load From File...', command=self.load_from_file)
+        filemenu.add_command(label='Save To File', command=self.save_to_file)
+        self.menubar.add_cascade(label='File', menu=filemenu)
+        self.root.config(menu=self.menubar)
+
+        # Create canvas
+        self.main_canvas = tk.Canvas(self.root, bg='white', height=512, width=1024)
+        self.main_canvas.pack(anchor='n')
+
+        # Create slider frame
+        self.slider_frame = tk.Frame(self.root)
+        self.slider_frame.pack(anchor='s')
+        self.helv = font.Font(family='Helvetica', size=6)
+
+    def load_from_file(self):
+        filename = filedialog.askopenfilename()
+        self.import_from_file(filename)
+
+    def save_to_file(self):
+        filename = filedialog.asksaveasfilename()
+        self.export_to_file(filename)
+
+    def update_gui(self):
+        self.main_canvas.delete('all')
+
+        # Draw grid
+        grid_width = 15
+        for i in range(int(self.main_canvas.winfo_width() / grid_width)):
+            self.main_canvas.create_line(i * grid_width, 0, i * grid_width, self.main_canvas.winfo_height(), fill='gray90')
+            self.main_canvas.create_text(i * grid_width + grid_width / 2, grid_width / 2, text=str(i), font=self.helv)
+            self.main_canvas.create_text(i * grid_width + grid_width / 2, grid_width / 2 + grid_width, text=str(i % 12),
+                                    font=self.helv)
+        for motif in self.motif_list:
+            motif.gui_update_canvas()
+
+        self.root.after(50, self.update_gui)
+
+    def import_from_file(self, filename):
+
+        read_object = None
+        if filename:
+            with open(filename, 'r') as f:
+                s = f.read()
+                read_object = json.loads(s)
+
+        if read_object:
+            self.motif_list = []
+            widget_list = self.slider_frame.winfo_children()
+            for w in widget_list:
+                w.destroy()
+
+            for o in read_object:
+                m = Motif()
+                m.scale = o['scale']
+                m.translation = o['translation']
+                m.color = o['color']
+                m.points = o['points']
+                self.motif_list.append(m)
+                m.gui_initialize(self.slider_frame, self.main_canvas)
 
 
-m.set_points([(1.0/6.0, 0.2),(2.0/6.0, 0.0),(3.0/6.0, 0.3),(4.0/6.0, 0.0),(5.0/6.0, 0.1)])
-m.set_scale(200)
-m.set_translation(0)
-m.set_color('PeachPuff3')
+    def export_to_file(self, filename):
+        e = []
+        for m in self.motif_list:
+            d = {}
+            d['points'] = m.points
+            d['scale'] = m.scale
+            d['translation'] = m.translation
+            d['color'] = m.color
 
-main_canvas = tk.Canvas(root, bg='white', height=512, width=1024)
-main_canvas.pack(anchor='n')
-slider_frame = tk.Frame(root)
+            e.append(d)
 
-for motif in motif_list:
-    motif.gui_initialize(slider_frame, main_canvas)
+        if filename:
+            with open(filename, 'w') as f:
+                json.dump(e, f, indent=4)
 
-slider_frame.pack(anchor='s')
 
-helv = font.Font(family='Helvetica', size=6)
 
-def update_gui():
-    main_canvas.delete('all')
-
-    # Draw grid
-    grid_width = 15
-    for i in range(int(main_canvas.winfo_width()/grid_width)):
-        main_canvas.create_line(i*grid_width, 0, i*grid_width, main_canvas.winfo_height(), fill='gray90')
-        main_canvas.create_text(i * grid_width + grid_width / 2, grid_width / 2, text=str(i), font=helv)
-        main_canvas.create_text(i*grid_width+grid_width/2, grid_width/2 + grid_width, text=str(i%12), font=helv )
-    for motif in motif_list:
-        motif.gui_update_canvas()
-
-    root.after(50, update_gui)
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    root.after(50, update_gui)
-    root.mainloop()
+    app = Trio()
+    app.root.after(50, app.update_gui)
+    app.root.mainloop()
 
 
 

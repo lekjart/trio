@@ -9,7 +9,7 @@ import math
 import json
 
 class Motif:
-    def __init__(self):
+    def __init__(self, from_object = None):
         self.scale = (1.0,1.0) # x and y scaling of motif
         self.translation = 0 # translation of motif
         self.modulo = 12
@@ -21,10 +21,23 @@ class Motif:
         self.frame = None
         self.parent_frame = None
         self.scale_entry = None
+        self.scale_slider_min = 50
+        self.scale_slider_max = 200
+        self.translation_slider_min = -50
+        self.translation_slider_max = 50
+
+        if from_object:
+            self.scale = from_object.get('scale', self.scale)
+            self.translation = from_object.get('translation', self.translation)
+            self.color = from_object.get('color', self.color)
+            self.points = from_object.get('points', self.points)
+            self.scale_slider_min = from_object.get('scale_slider_min', self.scale_slider_min)
+            self.scale_slider_max = from_object.get('scale_slider_max', self.scale_slider_max)
+            self.translation_slider_min = from_object.get('translation_slider_min', self.translation_slider_min)
+            self.translation_slider_max = from_object.get('translation_slider_max', self.translation_slider_max)
 
     def __del__(self):
-        #self.frame.destroy()
-        print('bkljsdfklsdjfklj')
+        pass
 
     def set_color(self, new_color):
         self.color = new_color
@@ -86,6 +99,18 @@ class Motif:
             if x < self.points[i+1][0]*self.scale[0]:
                 return self.interpolate(self.points[i], self.points[i+1], x)*self.scale[1]
 
+    def serialize(self):
+        d = {}
+        d['points'] = self.points
+        d['scale'] = self.scale
+        d['translation'] = self.translation
+        d['color'] = self.color
+        d['scale_slider_min'] = self.scale_slider.cget('from')
+        d['scale_slider_max'] = self.scale_slider.cget('to')
+        d['translation_slider_min'] = self.translation_slider.cget('from')
+        d['translation_slider_max'] = self.translation_slider.cget('to')
+        return d
+
     def gui_set_scale(self, value):
         self.set_scale(value)
         self.motif_scale.set(value)
@@ -120,53 +145,89 @@ class Motif:
         self.frame = tk.Frame(self.parent_frame, relief=tk.RAISED, bd=4)
 
         # Create slider for scaling motif
-        self.motif_scale_slider = tk.Scale(self.frame,
-                                      command=self.gui_set_scale,
-                                      from_=50.0,
-                                      to=250.0,
-                                      label='S',
-                                      showvalue=0)
+        self.scale_slider = tk.Scale(self.frame,
+                                     command=self.gui_set_scale,
+                                     from_=self.scale_slider_min,
+                                     to=self.scale_slider_max,
+                                     label='S',
+                                     showvalue=0)
 
-        self.motif_scale_slider.pack(side=tk.LEFT)
+        self.scale_slider.pack(side=tk.LEFT)
 
         # Create editable text label for slider value
         self.motif_scale = tk.StringVar()
-        self.motif_scale.set(50)
+        self.motif_scale.set(self.scale[0])
+        self.scale_slider.set(self.scale[0])
 
         self.scale_entry = tk.Entry(self.frame,
                                     width=4,
                                     textvariable=self.motif_scale
                                     )
-        self.scale_entry.bind('<Return>', lambda eff: self.gui_on_entry_submit(eff, self.motif_scale, self.motif_scale_slider))
+        self.scale_entry.bind('<Return>', lambda eff: self.gui_on_entry_submit(eff, self.motif_scale, self.scale_slider))
         self.scale_entry.pack(side=tk.LEFT)
 
         # Create slider for translating motif
-        self.motif_translation_slider = tk.Scale(self.frame,
-                                            command=self.gui_set_translation,
-                                            from_=0,
-                                            to=1024,
-                                            label='T')
+        self.translation_slider = tk.Scale(self.frame,
+                                           command=self.gui_set_translation,
+                                           from_=self.translation_slider_min,
+                                           to=self.translation_slider_max,
+                                           label='T')
 
-        self.motif_translation_slider.pack(side=tk.LEFT)
+        self.translation_slider.pack(side=tk.LEFT)
+
         # Create editable text label for slider value
         self.motif_translation = tk.StringVar()
-        self.motif_translation.set(0)
+        self.motif_translation.set(self.translation)
+        self.translation_slider.set(self.translation)
 
         self.translation_entry = tk.Entry(self.frame,
                                     width=4,
                                     textvariable=self.motif_translation
                                     )
-        self.translation_entry.bind('<Return>', lambda eff: self.gui_on_entry_submit(eff, self.motif_translation, self.motif_translation_slider))
+        self.translation_entry.bind('<Return>', lambda eff: self.gui_on_entry_submit(eff, self.motif_translation, self.translation_slider))
         self.translation_entry.pack(side=tk.LEFT)
+
+        # Create show/hide checkbox
+        self.show_motif = tk.IntVar()
+        check_button = tk.Checkbutton(self.frame, variable=self.show_motif)
+        check_button.pack()
 
         self.frame.pack(side=tk.LEFT)
 
     def gui_update_canvas(self):
-        if self.canvas:
+        if self.canvas and self.show_motif.get():
             s = []
-            for i in range(self.canvas.winfo_width()):
-                s.append(i)
-                s.append(self.canvas.winfo_height() - int(self.get_value(i)))
+            current_direction = 1
+
+            # Initialize first point
+            last_value = self.get_value(0)
+            s.append(0)
+            s.append(self.canvas.winfo_height() - int(last_value))
+
+            if self.get_value(1) <= last_value:
+                current_direction = -1
+
+            for i in range(self.canvas.winfo_width()-1):
+                value = self.get_value(i+1)
+                if current_direction > 0 and value > last_value:
+                    last_value = value
+                    continue
+                elif current_direction > 0 and value <= last_value:
+                    s.append(i+1)
+                    s.append(self.canvas.winfo_height() - int(last_value))
+                    last_value = value
+                    current_direction = -current_direction
+                elif current_direction < 0 and value < last_value:
+                    last_value = value
+                    continue
+                elif current_direction < 0 and value >= last_value:
+                    s.append(i+1)
+                    s.append(self.canvas.winfo_height() - int(last_value))
+                    last_value = value
+                    current_direction = -current_direction
+
+            s.append(i+1)
+            s.append(self.canvas.winfo_height() - int(value))
 
             self.canvas.create_line(fill=self.color, width=2, *s)
 
@@ -186,7 +247,7 @@ class Trio:
         self.root.config(menu=self.menubar)
 
         # Create canvas
-        self.main_canvas = tk.Canvas(self.root, bg='white', height=512, width=1024)
+        self.main_canvas = tk.Canvas(self.root, bg='white', height=800, width=1600)
         self.main_canvas.pack(anchor='n')
 
         # Create slider frame
@@ -203,7 +264,7 @@ class Trio:
         self.export_to_file(filename)
 
     def update_gui(self):
-        self.main_canvas.delete('all')
+        self.main_canvas.delete(tk.ALL)
 
         # Draw grid
         grid_width = 15
@@ -232,11 +293,8 @@ class Trio:
                 w.destroy()
 
             for o in read_object:
-                m = Motif()
-                m.scale = o['scale']
-                m.translation = o['translation']
-                m.color = o['color']
-                m.points = o['points']
+                m = Motif(from_object = o)
+
                 self.motif_list.append(m)
                 m.gui_initialize(self.slider_frame, self.main_canvas)
 
@@ -244,12 +302,7 @@ class Trio:
     def export_to_file(self, filename):
         e = []
         for m in self.motif_list:
-            d = {}
-            d['points'] = m.points
-            d['scale'] = m.scale
-            d['translation'] = m.translation
-            d['color'] = m.color
-
+            d = m.serialize()
             e.append(d)
 
         if filename:
